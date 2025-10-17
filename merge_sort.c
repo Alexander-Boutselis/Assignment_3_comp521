@@ -30,6 +30,17 @@ struct sort_params {
 
 
 //===========================================================
+// Thread references
+// Description:
+//   These hold the task_struct pointers returned by kthread_run().
+//   They allow us to manage (stop or check) the threads later.
+//===========================================================
+static struct task_struct *sort_thread1 = NULL;
+static struct task_struct *sort_thread2 = NULL;
+static struct task_struct *merge_thread = NULL;
+
+
+//===========================================================
 // Function Prototypes
 //===========================================================
 static void merge(int *left, int left_size, int *right, int right_size, int *result);
@@ -111,7 +122,7 @@ static int __init proc_init(void)
     // ------------------------------------------------------
     // Use a for-loop to copy each element.
     //
-    for (i = 0; i < my_size; i++){
+    for (int i = 0; i < my_size; i++){
         work_array[i] = my_data[i];
     }
 
