@@ -1,0 +1,61 @@
+$ make
+make -C /lib/modules/6.14.0-29-generic/build M=/home/abooty13/Comp521/Assignment_3_comp521 modules
+make[1]: Entering directory '/usr/src/linux-headers-6.14.0-29-generic'
+make[2]: Entering directory '/home/abooty13/Comp521/Assignment_3_comp521'
+warning: the compiler differs from the one used to build the kernel
+  The kernel was built by: aarch64-linux-gnu-gcc-14 (Ubuntu 14.2.0-19ubuntu2) 14.2.0
+  You are using:           gcc-14 (Ubuntu 14.2.0-19ubuntu2) 14.2.0
+  CC [M]  merge_sort.o
+merge_sort.c: In function ‘proc_init’:
+merge_sort.c:103:9: error: ‘my_size’ undeclared (first use in this function); did you mean ‘ksize’?
+  103 |     if (my_size <= 0) {
+      |         ^~~~~~~
+      |         ksize
+merge_sort.c:103:9: note: each undeclared identifier is reported only once for each function it appears in
+In file included from /usr/src/linux-headers-6.14.0-29-generic/include/linux/percpu.h:5,
+                 from /usr/src/linux-headers-6.14.0-29-generic/arch/arm64/include/asm/arch_timer.h:18,
+                 from /usr/src/linux-headers-6.14.0-29-generic/arch/arm64/include/asm/timex.h:8,
+                 from /usr/src/linux-headers-6.14.0-29-generic/include/linux/timex.h:67,
+                 from /usr/src/linux-headers-6.14.0-29-generic/include/linux/time32.h:13,
+                 from /usr/src/linux-headers-6.14.0-29-generic/include/linux/time.h:60,
+                 from /usr/src/linux-headers-6.14.0-29-generic/arch/arm64/include/asm/stat.h:12,
+                 from /usr/src/linux-headers-6.14.0-29-generic/include/linux/stat.h:6,
+                 from /usr/src/linux-headers-6.14.0-29-generic/include/linux/module.h:13,
+                 from merge_sort.c:11:
+/usr/src/linux-headers-6.14.0-29-generic/include/linux/alloc_tag.h:239:1: error: initialization of ‘int *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
+  239 | ({                                                                      \
+      | ^
+/usr/src/linux-headers-6.14.0-29-generic/include/linux/slab.h:907:49: note: in expansion of macro ‘alloc_hooks’
+  907 | #define kmalloc(...)                            alloc_hooks(kmalloc_noprof(__VA_ARGS__))
+      |                                                 ^~~~~~~~~~~
+merge_sort.c:114:23: note: in expansion of macro ‘kmalloc’
+  114 |     int *work_array = kmalloc(my_size * sizeof(int), GFP_KERNEL);
+      |                       ^~~~~~~
+merge_sort.c:126:25: error: ‘data’ undeclared (first use in this function); did you mean ‘_data’?
+  126 |         work_array[i] = data[i];
+      |                         ^~~~
+      |                         _data
+merge_sort.c:144:24: error: ‘mid’ undeclared (first use in this function); did you mean ‘pid’?
+  144 |     left_params.size = mid;
+      |                        ^~~
+      |                        pid
+merge_sort.c:133:9: warning: unused variable ‘half’ [-Wunused-variable]
+  133 |     int half = my_size/2;
+      |         ^~~~
+merge_sort.c: At top level:
+merge_sort.c:78:12: warning: ‘merging_thread_fn’ defined but not used [-Wunused-function]
+   78 | static int merging_thread_fn(void *args)
+      |            ^~~~~~~~~~~~~~~~~
+merge_sort.c:57:13: warning: ‘merge’ defined but not used [-Wunused-function]
+   57 | static void merge(int *left, int left_size, int *right, int right_size, int *result)
+      |             ^~~~~
+merge_sort.c:40:28: warning: ‘merge_thread’ defined but not used [-Wunused-variable]
+   40 | static struct task_struct *merge_thread = NULL;
+      |                            ^~~~~~~~~~~~
+make[4]: *** [/usr/src/linux-headers-6.14.0-29-generic/scripts/Makefile.build:207: merge_sort.o] Error 1
+make[3]: *** [/usr/src/linux-headers-6.14.0-29-generic/Makefile:2001: .] Error 2
+make[2]: *** [/usr/src/linux-headers-6.14.0-29-generic/Makefile:251: __sub-make] Error 2
+make[2]: Leaving directory '/home/abooty13/Comp521/Assignment_3_comp521'
+make[1]: *** [Makefile:251: __sub-make] Error 2
+make[1]: Leaving directory '/usr/src/linux-headers-6.14.0-29-generic'
+make: *** [Makefile:4: all] Error 2

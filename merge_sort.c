@@ -123,7 +123,7 @@ static int __init proc_init(void)
     // Use a for-loop to copy each element.
     //
     for (int i = 0; i < my_size; i++){
-        work_array[i] = my_data[i];
+        work_array[i] = data[i];
     }
 
     // ------------------------------------------------------
