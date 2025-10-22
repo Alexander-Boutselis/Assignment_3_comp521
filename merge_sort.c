@@ -18,6 +18,17 @@
 
 
 
+
+//===========================================================
+// Added: Module parameters to fix 'my_size' and 'data' undeclared errors
+//===========================================================
+static int my_size = 0;
+static int my_data[128];
+module_param(my_size, int, 0);
+module_param_array(my_data, int, &my_size, 0);
+
+
+
 //===========================================================
 // Structure: sort_params
 // Description:
@@ -123,7 +134,7 @@ static int __init proc_init(void)
     // Use a for-loop to copy each element.
     //
     for (int i = 0; i < my_size; i++){
-        work_array[i] = data[i];
+        work_array[i] = my_data[i];
     }
 
     // ------------------------------------------------------
