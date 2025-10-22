@@ -123,7 +123,7 @@ static int __init proc_init(void)
     // Use kmalloc() to create a dynamic array of integers
     // (so we don't modify the module parameter directly).
     //
-    *work_array = kmalloc(my_size * sizeof(int), GFP_KERNEL);
+    work_array = kmalloc(my_size * sizeof(int), GFP_KERNEL);
     if (!work_array) {
         printk(KERN_ERR "[INIT] Memory allocation failed.\n");
         return -ENOMEM;
