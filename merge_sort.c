@@ -141,7 +141,7 @@ static int __init proc_init(void)
     // Step 4: Split array into two halves
     // ------------------------------------------------------
     // Determine the midpoint (half = my_size / 2).
-    int half = my_size/2;
+    int mid = my_size/2;
 
     // Prepare two struct sort_params variables:
     //   left_params → points to first half of array
