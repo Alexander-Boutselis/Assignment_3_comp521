@@ -26,6 +26,7 @@ static int my_size = 0;
 static int my_data[128];
 module_param(my_size, int, 0);
 module_param_array(my_data, int, &my_size, 0);
+static int *work_array = NULL;
 
 
 
@@ -122,7 +123,7 @@ static int __init proc_init(void)
     // Use kmalloc() to create a dynamic array of integers
     // (so we don't modify the module parameter directly).
     //
-    int *work_array = kmalloc(my_size * sizeof(int), GFP_KERNEL);
+    *work_array = kmalloc(my_size * sizeof(int), GFP_KERNEL);
     if (!work_array) {
         printk(KERN_ERR "[INIT] Memory allocation failed.\n");
         return -ENOMEM;
@@ -212,7 +213,38 @@ static int __init proc_init(void)
 //===========================================================
 static void __exit proc_exit(void)
 {
-    // TODO: stop threads and free any allocated resources
+   printk(KERN_INFO "[EXIT] Cleaning up MergeSort module...\\n");
+
+    // ------------------------------------------------------
+    // Step 1: Stop sorting threads if running
+    // ------------------------------------------------------
+    if (sort_thread1) {
+        kthread_stop(sort_thread1);
+        printk(KERN_INFO "[EXIT] sort_thread1 stopped.\\n");
+    }
+
+    if (sort_thread2) {
+        kthread_stop(sort_thread2);
+        printk(KERN_INFO "[EXIT] sort_thread2 stopped.\\n");
+    }
+
+    // ------------------------------------------------------
+    // Step 2: Stop merging thread (if implemented later)
+    // ------------------------------------------------------
+    if (merge_thread) {
+        kthread_stop(merge_thread);
+        printk(KERN_INFO "[EXIT] merge_thread stopped.\\n");
+    }
+
+    // ------------------------------------------------------
+    // Step 3: Free dynamically allocated memory
+    // ------------------------------------------------------
+    if (work_array) {
+        kfree(work_array);
+        printk(KERN_INFO "[EXIT] Freed allocated memory.\\n");
+    }
+
+    printk(KERN_INFO "[EXIT] MergeSort module unloaded successfully.\\n");
 }
 
 //===========================================================
