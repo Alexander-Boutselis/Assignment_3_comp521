@@ -152,6 +152,21 @@ static void mergesort_rec(int *arr, int n, int *tmp)
     mergesort_rec(arr, mid, tmp);
     mergesort_rec(arr + mid, n - mid, tmp);
 
+    /* --- Assignment-style print of the two halves being merged --- */
+    pr_info("Merging: ");
+    pr_cont("[");
+    for (i = 0; i < mid; ++i) {
+        if (i) pr_cont(" ");
+        pr_cont("%d", arr[i]);
+    }
+    pr_cont("] and [");
+    for (i = 0; i < n - mid; ++i) {
+        if (i) pr_cont(" ");
+        pr_cont("%d", arr[mid + i]);
+    }
+    pr_cont("]\n");
+    /* ------------------------------------------------------------- */
+
     // Merge arr[0..mid-1] and arr[mid..n-1] into tmp[0..n-1]
     i = 0; j = mid; k = 0;
     while (i < mid && j < n)
@@ -164,6 +179,7 @@ static void mergesort_rec(int *arr, int n, int *tmp)
     // Copy back
     memcpy(arr, tmp, n * sizeof(int));
 }
+
 
 static void sort(int *ptr, int array_size)
 {
