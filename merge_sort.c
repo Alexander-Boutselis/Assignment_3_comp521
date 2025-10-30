@@ -78,16 +78,31 @@ static int sorting_thread_fn(void *data);
 static int merging_thread_fn(void *data);
 
 // -------- Utilities --------
-static void print_array(const char *tag, const int *a, int n)
+//static void print_array(const char *tag, const int *a, int n)
+//{
+//    int i;
+//    printk(KERN_INFO "%s [", tag);
+//    for (i = 0; i < n; ++i) {
+//        printk(KERN_INFO "%s%d%s",
+//               " ", a[i], (i == n - 1) ? " " : ",");
+//    }
+//    printk(KERN_INFO "]\n");
+//}
+
+
+static void print_array(const char *prefix, const int *a, int n)
 {
     int i;
-    printk(KERN_INFO "%s [", tag);
+    pr_info("%s", prefix);   // start (no newline)
+    pr_cont(" [");
     for (i = 0; i < n; ++i) {
-        printk(KERN_INFO "%s%d%s",
-               " ", a[i], (i == n - 1) ? " " : ",");
+        if (i) pr_cont(", ");
+        pr_cont("%d", a[i]);
     }
-    printk(KERN_INFO "]\n");
+    pr_cont("]\n");
 }
+
+
 
 // -------- Implementations --------
 static void merge(int *ptr_merged_array,
