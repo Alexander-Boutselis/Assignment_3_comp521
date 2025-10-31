@@ -1,166 +1,75 @@
 //===========================================================
-// COMP 521/L - Assignment 3: Multithreaded Merge Sort Module
-// File: mergesort.c
-// Description:
-//   A Linux kernel module that sorts an integer array using
-//   multiple threads (two sorting threads + one merging thread).
+// Multithreaded Merge Sort Kernel Module (simplified)
 //===========================================================
 
-#include <linux/module.h>       
-#include <linux/kernel.h>       
-#include <linux/slab.h>         
-#include <linux/moduleparam.h>  
-#include <linux/kthread.h>      
-#include <linux/delay.h>        
-#include <linux/mutex.h>        
-#include <linux/completion.h>   
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/moduleparam.h>
+#include <linux/kthread.h>
+#include <linux/completion.h>
+#include <linux/delay.h>
+#include <linux/string.h>
 
-/*
-Example usage
-  sudo insmod mergesort.ko my_size=8 my_data=7,3,9,1,4,8,2,6
-  dmesg | tail -n 200
-  sudo rmmod mergesort
-*/
-
-// -------- Module parameters --------
-static int my_size;                         // number of elements to sort
+static int my_size;
 module_param(my_size, int, 0444);
-MODULE_PARM_DESC(my_size, "Number of elements in my_data to sort");
+MODULE_PARM_DESC(my_size, "Number of elements to sort");
 
-static int my_data[1024];                   // raw input elements (max 1024)
-static int my_data_count;                   // how many ints were provided
+static int my_data[1024];
+static int my_data_count;
 module_param_array(my_data, int, &my_data_count, 0444);
 MODULE_PARM_DESC(my_data, "Comma-separated list of integers to sort");
 
-// -------- Types --------
-struct sort_params {
-    int *ptr_sort_array;                    // pointer to the sub-array to sort
-    int  sort_array_size;                   // length of the sub-array
-    struct completion *done;                // completion to signal when done
-};
-
-struct merge_params {
-    int *ptr_merged_array;                  // output array for merged result
-    int *ptr_left;  int left_array_size;    // left, already sorted
-    int *ptr_right; int right_array_size;   // right, already sorted
-    struct completion *wait_left;           // wait for left sorter
-    struct completion *wait_right;          // wait for right sorter
-    struct completion *done;                // signal when merge finishes
-};
-
-// -------- Globals --------
-static int *work_array;                     // copy of input (unsorted)
-static int *left_array, *right_array;       // halves after split
+// -------------------- Globals --------------------
+static int *work_array;
+static int *left_array, *right_array;
 static int left_size, right_size;
-
-static int *ptr_final_sorted_array;         // final sorted output buffer
+static int *final_sorted;
 
 static struct task_struct *left_thread;
 static struct task_struct *right_thread;
 static struct task_struct *merge_thread;
 
-// Completions for sync
 static DECLARE_COMPLETION(left_done);
 static DECLARE_COMPLETION(right_done);
 static DECLARE_COMPLETION(merge_done);
 
-// -------- Prototypes --------
-static int __init mergesort_init(void);
-static void __exit mergesort_exit(void);
-
-static void merge(int *ptr_merged_array,
-                  int *ptr_left,  int left_array_size,
-                  int *ptr_right, int right_array_size);
-static void split(void);
-static void sort(int *ptr, int array_size);
-
-static int sorting_thread_fn(void *data);
-static int merging_thread_fn(void *data);
-
-// -------- Utilities --------
-//static void print_array(const char *tag, const int *a, int n)
-//{
-//    int i;
-//    printk(KERN_INFO "%s [", tag);
-//    for (i = 0; i < n; ++i) {
-//        printk(KERN_INFO "%s%d%s",
-//               " ", a[i], (i == n - 1) ? " " : ",");
-//    }
-//    printk(KERN_INFO "]\n");
-//}
-
-
-static void print_array(const char *prefix, const int *a, int n)
+// -------------------- Small helpers --------------------
+static void print_array_line(const char *label, const int *a, int n)
 {
     int i;
-    pr_info("%s", prefix);   // start (no newline)
-    pr_cont(" [");
+    pr_info("%s [ ", label);
     for (i = 0; i < n; ++i) {
-        if (i) pr_cont(", ");
         pr_cont("%d", a[i]);
+        if (i < n - 1) pr_cont(" ");
     }
-    pr_cont("]\n");
+    pr_cont(" ]\n");
 }
 
-
-
-// -------- Implementations --------
-static void merge(int *ptr_merged_array,
-                  int *ptr_left,  int left_array_size,
-                  int *ptr_right, int right_array_size)
+// -------------------- Core merge (with logging) --------------------
+static void merge(int *dst, int *L, int nL, int *R, int nR)
 {
-    int i = 0, j = 0, k = 0;
-    int t;
+    int i = 0, j = 0, k = 0, t;
 
-    /* Print: Merging: [ ... ] and [ ... ] */
     pr_info("Merging: [ ");
-    for (t = 0; t < left_array_size; ++t) {
-        pr_cont("%d", ptr_left[t]);
-        if (t < left_array_size - 1)
-            pr_cont(" ");
+    for (t = 0; t < nL; ++t) {
+        pr_cont("%d", L[t]);
+        if (t < nL - 1) pr_cont(" ");
     }
     pr_cont(" ] and [ ");
-    for (t = 0; t < right_array_size; ++t) {
-        pr_cont("%d", ptr_right[t]);
-        if (t < right_array_size - 1)
-            pr_cont(" ");
+    for (t = 0; t < nR; ++t) {
+        pr_cont("%d", R[t]);
+        if (t < nR - 1) pr_cont(" ");
     }
     pr_cont(" ]\n");
 
-    /* Merge two sorted arrays into ptr_merged_array */
-    while (i < left_array_size && j < right_array_size) {
-        if (ptr_left[i] <= ptr_right[j])
-            ptr_merged_array[k++] = ptr_left[i++];
-        else
-            ptr_merged_array[k++] = ptr_right[j++];
-    }
-    while (i < left_array_size)
-        ptr_merged_array[k++] = ptr_left[i++];
-    while (j < right_array_size)
-        ptr_merged_array[k++] = ptr_right[j++];
+    while (i < nL && j < nR)
+        dst[k++] = (L[i] <= R[j]) ? L[i++] : R[j++];
+    while (i < nL) dst[k++] = L[i++];
+    while (j < nR) dst[k++] = R[j++];
 }
 
-
-static void split(void)
-{
-    // Split work_array into two halves and allocate left/right buffers
-    left_size  = my_size / 2;
-    right_size = my_size - left_size;
-
-    left_array  = kmalloc_array(left_size, sizeof(int), GFP_KERNEL);
-    right_array = kmalloc_array(right_size, sizeof(int), GFP_KERNEL);
-    if (!left_array || !right_array) {
-        printk(KERN_ERR "[SPLIT] Allocation failed for sub-arrays.\n");
-        return;
-    }
-
-    // Copy halves
-    memcpy(left_array,  work_array,               left_size  * sizeof(int));
-    memcpy(right_array, work_array + left_size,   right_size * sizeof(int));
-    printk(KERN_INFO "[SPLIT] left_size=%d right_size=%d\n", left_size, right_size);
-}
-
-// Recursive mergesort on a single array buffer
+// -------------------- Local mergesort for each half --------------------
 static void mergesort_rec(int *arr, int n, int *tmp)
 {
     int mid, i, j, k;
@@ -170,218 +79,144 @@ static void mergesort_rec(int *arr, int n, int *tmp)
     mergesort_rec(arr, mid, tmp);
     mergesort_rec(arr + mid, n - mid, tmp);
 
-    // Merge arr[0..mid-1] and arr[mid..n-1] into tmp[0..n-1]
     i = 0; j = mid; k = 0;
-    while (i < mid && j < n)
-        tmp[k++] = (arr[i] <= arr[j]) ? arr[i++] : arr[j++];
-    while (i < mid)
-        tmp[k++] = arr[i++];
-    while (j < n)
-        tmp[k++] = arr[j++];
-
-    // Copy back
+    while (i < mid && j < n) tmp[k++] = (arr[i] <= arr[j]) ? arr[i++] : arr[j++];
+    while (i < mid) tmp[k++] = arr[i++];
+    while (j < n)   tmp[k++] = arr[j++];
     memcpy(arr, tmp, n * sizeof(int));
 }
 
-static void sort(int *ptr, int array_size)
+static void sort(int *ptr, int n)
 {
     int *tmp;
-    if (!ptr || array_size <= 1) return;
-    tmp = kmalloc_array(array_size, sizeof(int), GFP_KERNEL);
-    if (!tmp) {
-        printk(KERN_ERR "[SORT] Temp allocation failed. Using insertion sort fallback.\n");
-        // Tiny safe fallback to avoid failing silently
-        for (int i = 1; i < array_size; ++i) {
-            int key = ptr[i], m = i - 1;
-            while (m >= 0 && ptr[m] > key) { ptr[m+1] = ptr[m]; m--; }
-            ptr[m+1] = key;
-        }
-        return;
-    }
-    mergesort_rec(ptr, array_size, tmp);
+    if (!ptr || n <= 1) return;
+    tmp = kmalloc_array(n, sizeof(int), GFP_KERNEL);
+    if (!tmp) return;
+    mergesort_rec(ptr, n, tmp);
     kfree(tmp);
 }
 
-// ---- Thread functions ----
+// -------------------- Threads --------------------
+struct sort_params { int *p; int n; struct completion *done; };
+struct merge_params {
+    int *dst, *L, *R; int nL, nR;
+    struct completion *waitL, *waitR, *done;
+};
+
 static int sorting_thread_fn(void *data)
 {
-    struct sort_params *p = (struct sort_params *)data;
-    if (!p || !p->ptr_sort_array || p->sort_array_size <= 0) {
-        printk(KERN_ERR "[THREAD:sort] Invalid params.\n");
-        if (p && p->done) complete(p->done);
-        return -EINVAL;
-    }
-    printk(KERN_INFO "[THREAD:sort] Sorting %d elements...\n", p->sort_array_size);
-    sort(p->ptr_sort_array, p->sort_array_size);
-    if (p->done) complete(p->done);
+    struct sort_params *sp = data;
+    sort(sp->p, sp->n);
+    if (sp->done) complete(sp->done);
     return 0;
 }
 
 static int merging_thread_fn(void *data)
 {
-    struct merge_params *m = (struct merge_params *)data;
-    if (!m || !m->ptr_merged_array || !m->ptr_left || !m->ptr_right) {
-        printk(KERN_ERR "[THREAD:merge] Invalid params.\n");
-        if (m && m->done) complete(m->done);
-        return -EINVAL;
-    }
-    // Wait for the two sorting threads to complete
-    if (m->wait_left)  wait_for_completion(m->wait_left);
-    if (m->wait_right) wait_for_completion(m->wait_right);
+    struct merge_params *mp = data;
 
-    printk(KERN_INFO "[THREAD:merge] Merging L=%d, R=%d...\n",
-           m->left_array_size, m->right_array_size);
+    if (mp->waitL)  wait_for_completion(mp->waitL);
+    if (mp->waitR)  wait_for_completion(mp->waitR);
 
-    merge(m->ptr_merged_array,
-          m->ptr_left,  m->left_array_size,
-          m->ptr_right, m->right_array_size);
+    merge(mp->dst, mp->L, mp->nL, mp->R, mp->nR);
 
-    if (m->done) complete(m->done);
+    if (mp->done) complete(mp->done);
     return 0;
 }
 
-// -------- Module init/exit --------
+// -------------------- Split --------------------
+static void split(void)
+{
+    left_size  = my_size / 2;
+    right_size = my_size - left_size;
+
+    left_array  = kmalloc_array(left_size, sizeof(int), GFP_KERNEL);
+    right_array = kmalloc_array(right_size, sizeof(int), GFP_KERNEL);
+
+    if (!left_array || !right_array)
+        return;
+
+    memcpy(left_array,  work_array,             left_size  * sizeof(int));
+    memcpy(right_array, work_array + left_size, right_size * sizeof(int));
+}
+
+// -------------------- Module init/exit --------------------
 static int __init mergesort_init(void)
 {
     int i;
-    struct sort_params left_params = {
-        .ptr_sort_array = NULL,
-        .sort_array_size = 0,
-        .done = &left_done,
-    };
-    struct sort_params right_params = {
-        .ptr_sort_array = NULL,
-        .sort_array_size = 0,
-        .done = &right_done,
-    };
-    struct merge_params mparams = {
-        .ptr_merged_array = NULL,
-        .ptr_left = NULL, .left_array_size = 0,
-        .ptr_right = NULL, .right_array_size = 0,
-        .wait_left = &left_done,
-        .wait_right = &right_done,
-        .done = &merge_done,
-    };
+    struct sort_params lsp = {0}, rsp = {0};
+    struct merge_params mp  = {0};
 
-    printk(KERN_INFO "[INIT] MergeSort module loaded. my_size=%d my_data_count=%d\n",
-           my_size, my_data_count);
-
-    // Validate input
-    if (my_size <= 0 || my_size > 1024) {
-        printk(KERN_ERR "[INIT] Invalid size parameter: %d\n", my_size);
+    if (my_size <= 0 || my_size > 1024 || my_data_count < my_size)
         return -EINVAL;
-    }
-    if (my_data_count < my_size) {
-        printk(KERN_ERR "[INIT] Provided my_data (%d) smaller than my_size (%d).\n",
-               my_data_count, my_size);
-        return -EINVAL;
-    }
 
-    // Allocate and copy input into work_array
     work_array = kmalloc_array(my_size, sizeof(int), GFP_KERNEL);
-    if (!work_array) {
-        printk(KERN_ERR "[INIT] Memory allocation failed for work_array.\n");
-        return -ENOMEM;
-    }
-    for (i = 0; i < my_size; i++)
-        work_array[i] = my_data[i];
+    if (!work_array) return -ENOMEM;
+    for (i = 0; i < my_size; ++i) work_array[i] = my_data[i];
 
-    printk(KERN_INFO "[INPUT] Original array:");
-    print_array("[INPUT]", work_array, my_size);
+    pr_info("Size of list: %d\n", my_size);
+    print_array_line("Original list:", work_array, my_size);
 
-    // Split input into two independent buffers
     split();
-    if (!left_array || !right_array) {
-        printk(KERN_ERR "[INIT] split() failed, aborting.\n");
-        kfree(work_array);
-        work_array = NULL;
-        return -ENOMEM;
-    }
+    if (!left_array || !right_array) { kfree(work_array); return -ENOMEM; }
 
-    // Prepare final output buffer
-    ptr_final_sorted_array = kmalloc_array(my_size, sizeof(int), GFP_KERNEL);
-    if (!ptr_final_sorted_array) {
-        printk(KERN_ERR "[INIT] Allocation failed for final array.\n");
-        kfree(left_array);  left_array = NULL;
-        kfree(right_array); right_array = NULL;
-        kfree(work_array);  work_array = NULL;
-        return -ENOMEM;
-    }
+    final_sorted = kmalloc_array(my_size, sizeof(int), GFP_KERNEL);
+    if (!final_sorted) { kfree(left_array); kfree(right_array); kfree(work_array); return -ENOMEM; }
 
-    // Fill thread parameter blocks
     reinit_completion(&left_done);
     reinit_completion(&right_done);
     reinit_completion(&merge_done);
 
-    left_params.ptr_sort_array  = left_array;
-    left_params.sort_array_size = left_size;
+    lsp.p = left_array;   lsp.n = left_size;   lsp.done = &left_done;
+    rsp.p = right_array;  rsp.n = right_size;  rsp.done = &right_done;
 
-    right_params.ptr_sort_array  = right_array;
-    right_params.sort_array_size = right_size;
+    mp.dst = final_sorted;
+    mp.L = left_array;  mp.nL = left_size;
+    mp.R = right_array; mp.nR = right_size;
+    mp.waitL = &left_done; mp.waitR = &right_done; mp.done = &merge_done;
 
-    mparams.ptr_merged_array = ptr_final_sorted_array;
-    mparams.ptr_left = left_array;   mparams.left_array_size  = left_size;
-    mparams.ptr_right = right_array; mparams.right_array_size = right_size;
-
-    // Launch two sorting threads
-    left_thread  = kthread_run(sorting_thread_fn,  &left_params,  "msort_left");
-    right_thread = kthread_run(sorting_thread_fn,  &right_params, "msort_right");
+    left_thread  = kthread_run(sorting_thread_fn, &lsp, "msort_left");
+    right_thread = kthread_run(sorting_thread_fn, &rsp, "msort_right");
     if (IS_ERR(left_thread) || IS_ERR(right_thread)) {
-        printk(KERN_ERR "[INIT] Failed to start sort threads.\n");
         if (!IS_ERR_OR_NULL(left_thread))  kthread_stop(left_thread);
         if (!IS_ERR_OR_NULL(right_thread)) kthread_stop(right_thread);
-        kfree(ptr_final_sorted_array);
-        kfree(left_array); kfree(right_array); kfree(work_array);
-        ptr_final_sorted_array = NULL; left_array = right_array = work_array = NULL;
+        kfree(final_sorted); kfree(left_array); kfree(right_array); kfree(work_array);
+        final_sorted = NULL; left_array = right_array = work_array = NULL;
         return -ECHILD;
     }
 
-    // Launch merging thread (waits on completions internally)
-    merge_thread = kthread_run(merging_thread_fn, &mparams, "msort_merge");
+    merge_thread = kthread_run(merging_thread_fn, &mp, "msort_merge");
     if (IS_ERR(merge_thread)) {
-        printk(KERN_ERR "[INIT] Failed to start merge thread.\n");
-        // Stop sort threads and bail out
-        if (left_thread)  kthread_stop(left_thread);
-        if (right_thread) kthread_stop(right_thread);
-        kfree(ptr_final_sorted_array);
-        kfree(left_array); kfree(right_array); kfree(work_array);
-        ptr_final_sorted_array = NULL; left_array = right_array = work_array = NULL;
+        if (!IS_ERR_OR_NULL(left_thread))  kthread_stop(left_thread);
+        if (!IS_ERR_OR_NULL(right_thread)) kthread_stop(right_thread);
+        kfree(final_sorted); kfree(left_array); kfree(right_array); kfree(work_array);
+        final_sorted = NULL; left_array = right_array = work_array = NULL;
         return -ECHILD;
     }
 
-    // Wait for merge to complete
+    /* Wait for full pipeline to finish so stack params are safe to discard. */
     wait_for_completion(&merge_done);
 
-    printk(KERN_INFO "[OUTPUT] Sorted array:");
-    print_array("[OUTPUT]", ptr_final_sorted_array, my_size);
+    /* Threads have finished; make exit() a pure free. */
+    left_thread = right_thread = merge_thread = NULL;
 
+    print_array_line("Sorted list:", final_sorted, my_size);
     return 0;
 }
 
 static void __exit mergesort_exit(void)
 {
-    printk(KERN_INFO "[EXIT] Exiting MergeSort. Cleaning up...\n");
-
-    // Threads should be finished by now (merge_done waited). But in case
-    // the module gets removed unexpectedly early, try to stop threads.
-    if (!IS_ERR_OR_NULL(left_thread))  kthread_stop(left_thread),  left_thread = NULL;
-    if (!IS_ERR_OR_NULL(right_thread)) kthread_stop(right_thread), right_thread = NULL;
-    if (!IS_ERR_OR_NULL(merge_thread)) kthread_stop(merge_thread), merge_thread = NULL;
-
-    kfree(ptr_final_sorted_array); ptr_final_sorted_array = NULL;
-    kfree(left_array);             left_array = NULL;
-    kfree(right_array);            right_array = NULL;
-    kfree(work_array);             work_array = NULL;
-
-    printk(KERN_INFO "[EXIT] MergeSort module removed.\n");
+    /* Nothing to stop; we nulled thread pointers after completion. */
+    kfree(final_sorted);   final_sorted = NULL;
+    kfree(left_array);     left_array = NULL;
+    kfree(right_array);    right_array = NULL;
+    kfree(work_array);     work_array = NULL;
+    pr_info("mergesort: module removed.\n");
 }
 
 module_init(mergesort_init);
 module_exit(mergesort_exit);
 
-//===========================================================
-// Module metadata
-//===========================================================
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Alexander Boutselis");
 MODULE_DESCRIPTION("Multithreaded Merge Sort Kernel Module");
