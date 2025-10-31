@@ -110,7 +110,24 @@ static void merge(int *ptr_merged_array,
                   int *ptr_right, int right_array_size)
 {
     int i = 0, j = 0, k = 0;
-    // Merge two sorted arrays into ptr_merged_array
+    int t;
+
+    /* Print: Merging: [ ... ] and [ ... ] */
+    pr_info("Merging: [ ");
+    for (t = 0; t < left_array_size; ++t) {
+        pr_cont("%d", ptr_left[t]);
+        if (t < left_array_size - 1)
+            pr_cont(" ");
+    }
+    pr_cont(" ] and [ ");
+    for (t = 0; t < right_array_size; ++t) {
+        pr_cont("%d", ptr_right[t]);
+        if (t < right_array_size - 1)
+            pr_cont(" ");
+    }
+    pr_cont(" ]\n");
+
+    /* Merge two sorted arrays into ptr_merged_array */
     while (i < left_array_size && j < right_array_size) {
         if (ptr_left[i] <= ptr_right[j])
             ptr_merged_array[k++] = ptr_left[i++];
@@ -122,6 +139,7 @@ static void merge(int *ptr_merged_array,
     while (j < right_array_size)
         ptr_merged_array[k++] = ptr_right[j++];
 }
+
 
 static void split(void)
 {
@@ -152,21 +170,6 @@ static void mergesort_rec(int *arr, int n, int *tmp)
     mergesort_rec(arr, mid, tmp);
     mergesort_rec(arr + mid, n - mid, tmp);
 
-    /* --- Assignment-style print of the two halves being merged --- */
-    pr_info("Merging: ");
-    pr_cont("[");
-    for (i = 0; i < mid; ++i) {
-        if (i) pr_cont(" ");
-        pr_cont("%d", arr[i]);
-    }
-    pr_cont("] and [");
-    for (i = 0; i < n - mid; ++i) {
-        if (i) pr_cont(" ");
-        pr_cont("%d", arr[mid + i]);
-    }
-    pr_cont("]\n");
-    /* ------------------------------------------------------------- */
-
     // Merge arr[0..mid-1] and arr[mid..n-1] into tmp[0..n-1]
     i = 0; j = mid; k = 0;
     while (i < mid && j < n)
@@ -179,7 +182,6 @@ static void mergesort_rec(int *arr, int n, int *tmp)
     // Copy back
     memcpy(arr, tmp, n * sizeof(int));
 }
-
 
 static void sort(int *ptr, int array_size)
 {
